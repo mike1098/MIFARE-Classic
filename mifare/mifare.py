@@ -30,24 +30,22 @@ class Classic1k():
                                    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00)
 
     def get_key_a(self, block: int):
-        #TODO write the function in a way that it returns the key for any given block
         """
-        Returns the Key A from a sector trailer.
+        Find the sector trailor for a given block and returns the Key A.
 
         Returns a list of 16 hex codes
         """
-        return self.sector_trailers[block]['keya']
+        sector_trailer = self.get_sector_trailer(block)
+        return self.sector_trailers[sector_trailer]['keya']
 
     def get_key_b(self, block: int):
-        #TODO write the function in a way that it returns the key for any given block
         """
-        Returns the Key B from a sector trailer.
+        Find the sector trailor for a given block and returns the Key B.
 
         Returns a list of 16 hex codes.
         """
-        #assert (sector is not in self.sector_trailers_blocks),
-        # "given sector is not a sector trailer. see sector_trailers_blocks"
-        return self.sector_trailers[self.get_sector_trailer(block)]['keyb']
+        sector_trailer = self.get_sector_trailer(block)
+        return self.sector_trailers[sector_trailer]['keyb']
 
     def set_key_a(self, block: int, keya):
         """
