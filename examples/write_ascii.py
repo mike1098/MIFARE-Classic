@@ -1,110 +1,86 @@
 #!/usr/bin/env python3
 
-# Write Playlist to RFID Card
+"""Writes text to RFID Card.
 
-#https://github.com/ondryaso/pi-rc522
+"""
 
-from pirc522 import RFID
-rdr = RFID()
+from pirc522 import RFID #https://github.com/ondryaso/pi-rc522
+
 
 import sys
-from mifare import Classic1k
-card = Classic1k()
+import mifare
 
-def connect_card(retries=3):
-    """Opens the connection to a RFID card for reading or writing"""
-    while retries > 0:
-        (error, tag_type) = rdr.request()
-        if not error:
-            (error, cardid) = rdr.anticoll()
-            if not error:
-                if not rdr.select_tag(cardid):
-                    return cardid
-        retries -= 1
-    print("No card found!")
-    return []
-    #uid
+card = mifare.Classic1k()
 
-def auth_block(cardid, auth, block=0):
-    assert len(cardid) == 5, f"Card uid has wrong length: {cardid}"
-    assert len(auth) == 6, f"Authenticator has wrong length:{auth}"
-    """Authenticate to a sector by a given block with authenticator a"""
-    error = rdr.card_auth(rdr.auth_a, block, auth, cardid)
-    if not error:
-        print("Sucessful Auth")
-        return True
-    else:
-        return False
+from functions import auth_block, auth_new_block, connect_card
 
-def format_card(cardid, card, startblock=1):
-    # Only the last 
+def format_card(rdr, cardid, card, startblock=1):
+    """Overwrites all block data with 0x00
+
+    Returns true if successful otherwise false
+    """
     assert startblock > 0, "Cannot write to Manufacturer Block 0"
-    data_block_index = card._data_blocks.index(startblock)
+    data_block_index = card.data_blocks.index(startblock)
     sector_trailer=card.get_sector_trailer(startblock)
-    print(f"index:{data_block_index} trailor {sector_trailer}")
     # Authenticate to the first sector
-    if not auth_block(cardid, card._sector_trailers[sector_trailer]['keya'], sector_trailer):
+    keya = card.get_key_a(startblock)
+    if not auth_block(rdr, cardid, keya, sector_trailer):
         print(f"could not intially authenticate block {sector_trailer}")
-        #rdr.stop_crypto()
-        return False
-    
-    while data_block_index < len(card._data_blocks):
-        if card.get_sector_trailer(card._data_blocks[data_block_index]) != sector_trailer:
-                    sector_trailer = card.get_sector_trailer(card._data_blocks[data_block_index])
-                    print(f"New Sector Trailer: {sector_trailer}")
-                    if not auth_block(cardid, card._sector_trailers[sector_trailer]['keya'], sector_trailer):
-                        print(f"could not authenticate block {sector_trailer}")
-                        rdr.stop_crypto()
-                        return False
-        print(f"Write block {card._data_blocks[data_block_index]}")
-        rdr.write(card._data_blocks[data_block_index], card.DEFAULT_BLOCK_DATA)
+        return False    
+    while data_block_index < len(card.data_blocks):
+        new_block = card.data_blocks[data_block_index]
+        sector_trailer= auth_new_block(rdr, card, cardid, sector_trailer, new_block)
+        if not sector_trailer:
+                    print(f"could not authenticate block {new_block} ")
+                    return None
+        print(f"Write {card.default_data_blocks} to block # {card.data_blocks[data_block_index]}")
+        rdr.write(card.data_blocks[data_block_index], card.default_data_blocks)
         # Next data block
         data_block_index += 1
-        # check if we need to a authenticate a new sector
-        # Same code is used in read_pl!
-        # TODO externalize in a function
-    #rdr.stop_crypto()    
     return True
 
-def write_playlist(cardid, card, playlist, startblock=8):
+def write_text(rdr, cardid, card, text, startblock=8):
     assert startblock > 0, "Cannot write to Manufacturer Block 0"
-    #TODO repair this assert!
-    #assert len(playlist) <= len(card._data_blocks) * card.block_length - startblock , f"Playlist must not be longer than {len(card._data_blocks * card.block_length)- startblock}"
     idx= 0
-    playlist_encode= list(playlist.encode())
-    data_block_index = card._data_blocks.index(startblock)
+    text_encode= list(text.encode())
+    data_block_index = card.data_blocks.index(startblock)
     sector_trailer=card.get_sector_trailer(startblock)
     print(f"index:{data_block_index} trailor {sector_trailer}")
     # Authenticate to the first sector
-    if not auth_block(cardid, card._sector_trailers[sector_trailer]['keya'], sector_trailer):
+    keya = card.get_key_a(startblock)
+    if not auth_block(rdr, cardid, keya, sector_trailer):
         print(f"could not intially authenticate block {sector_trailer}")
-        rdr.stop_crypto()
         return False
-    while idx < len(playlist_encode):
-        if card.get_sector_trailer(card._data_blocks[data_block_index]) != sector_trailer:
-                    sector_trailer = card.get_sector_trailer(card._data_blocks[data_block_index])
+    while idx < len(text_encode):
+        new_block = card.data_blocks[data_block_index]
+        sector_trailer= auth_new_block(rdr, card, cardid, sector_trailer, new_block)
+        if not sector_trailer:
+                    print(f"could not authenticate block {new_block} ")
+                    return None
+        """
+        new_sector_trailer = card.get_sector_trailer(card.data_blocks[data_block_index])
+        if sector_trailer != new_sector_trailer:
+                    sector_trailer = new_sector_trailer
                     print(f"New Sector Trailer: {sector_trailer}")
-                    if not auth_block(cardid, card._sector_trailers[sector_trailer]['keya'], sector_trailer):
+                    if not auth_block(cardid, card.sector_trailers[sector_trailer]['keya'], sector_trailer):
                         print(f"could not authenticate block {sector_trailer}")
-                        rdr.stop_crypto()
                         return False
-        block_to_write = playlist_encode[idx:idx+card.block_length]
-        if len(block_to_write) < card.block_length:
-            block_to_write.extend([0 for i in range(len(block_to_write),card.block_length)])
-        print(f"Block to write: {block_to_write}")
-        rdr.write(card._data_blocks[data_block_index], block_to_write)
+        """
+        block_content = text_encode[idx:idx+card.block_length]
+        # If the last block is less than 16 bytes we fill the remaining bytes with 0x00
+        if len(block_content) < card.block_length:
+            block_content.extend([0x00 for i in range(len(block_content),card.block_length)])
+        print(f"write block #:{card.data_blocks[data_block_index]:02} byte content: {block_content}")
+        rdr.write(card.data_blocks[data_block_index], block_content)
         data_block_index += 1
         idx+=card.block_length
-
-    #rdr.stop_crypto()
     return
-    
-cardid = connect_card()
 
-if len(cardid) == 5:
-    format_card(cardid, card)
-    write_playlist(cardid,card,sys.argv[1])
+reader = RFID()
+cardid = connect_card(reader)
 
-#TODO need to find out where is the best place to do this
-rdr.stop_crypto()
-rdr.cleanup()
+if cardid:
+    format_card(reader, cardid, card)
+    write_text(reader, cardid,card,sys.argv[1])
+
+reader.cleanup()

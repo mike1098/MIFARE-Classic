@@ -5,22 +5,7 @@ Returns text
 """
 from pirc522 import RFID #https://github.com/ondryaso/pi-rc522
 import mifare
-from functions import auth_block, auth_new_block
-
-def connect_card(rdr,retries=3):
-    """Opens the connection to a RFID card for reading or writing.
-
-    Returns the NUID/UID as a list
-    """
-    while retries > 0:
-        (error, _) = rdr.request()
-        if not error:
-            (error, uid) = rdr.anticoll()
-            if not error:
-                if not rdr.select_tag(uid):
-                    return uid
-        retries -= 1
-    return None
+from functions import auth_block, auth_new_block, connect_card
 
 def read_text(rdr, cardid, startblock=8):
     """Reads text from the RFID card.
@@ -54,8 +39,8 @@ def read_text(rdr, cardid, startblock=8):
                     rdr.stop_crypto()
                     return None
                 new_block = card.data_blocks[data_block_index]
-                if not auth_new_block(rdr, card, cardid, sector_trailer,
-                                      new_block):
+                sector_trailer= auth_new_block(rdr, card, cardid, sector_trailer, new_block)
+                if not sector_trailer:
                     print(f"could not authenticate block {new_block} ")
                     return None
         else:
