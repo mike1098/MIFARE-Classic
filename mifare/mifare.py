@@ -80,22 +80,30 @@ class Classic1k():
         return None
 
     @staticmethod
-    def int2block(value: int) -> list:
+    def int2block(value: int, lenght: int=16) -> list:
         """Converts an integer to block data.
 
-        Converts value to a list of hex values with length 16
-        and returns that list. None used elements are padded with 0x00
-        if value is greater than 32 bytes it returns none
+        Converts value to a list of hex values with the lenght of bytes 
+        given by parameter length and returns that list. None used elements 
+        are padded with 0x00.
+        If the value is greater than the number of bytes provided by length
+        the list is automatically extended.
+        if value is greater than 16 bytes it returns none because it doesnt
+        fit in to one block.
 
         Keyword arguments:
         value -- an integer with max lenght of 32bytes
+        length -- an integer represent the number of bytes
 
         returns a list or none
         """
         block_data=[]
-        #convert the integer to hex
-        hex_value=f'{value:0>32x}'
-        if len(hex_value) > 32:
+        #convert the integer to hex and fill unused bytes with 0
+        # Each byte consume 2 digits (8bit = FF)
+        #hex_value=f'{value:0>32x}'
+        hex_value=f'{value:0>{lenght*2}x}'
+        # We cannot push more than 16 bytes in ine blockvalue
+        if len(hex_value) > lenght*2:
             return None
         pos=0
         while pos< len(hex_value):
